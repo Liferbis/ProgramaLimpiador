@@ -1,4 +1,4 @@
-# Limpiador de programas (v1.0.0)
+# Limpiador de programas (v1.1.0)
 
 Desinstalador y limpiador de residuos para Windows. Le das el **nombre de un programa** —aunque lo escribas con alguna errata— y se encarga de todo: lo busca, te deja elegir cuál de las coincidencias, lo desinstala y borra **todo su rastro** en `C:` (archivos, carpetas, accesos directos, registro, servicios, tareas e inicio).
 
@@ -54,8 +54,9 @@ Pensado para usarse sin escribir código: doble clic al `.bat`, escribes el nomb
 
 ## Versiones y ramas
 
-- **`v1.0.0` (rama `main`):** versión de consola (la de este README).
-- **Rama `gui`:** en desarrollo, una versión con interfaz gráfica (ventana con botones de radio para elegir el programa).
+- **`v1.1.0` (rama `COMANDER`):** versión de consola — búsqueda aproximada, opción Salir, lista acotada y compatibilidad con PowerShell 5.1.
+- **`v1.0.0`:** primera versión de consola.
+- **Rama `Aplic`:** en desarrollo, una versión con interfaz gráfica (ventana con botones de radio para elegir el programa).
 
 ## Aviso
 
