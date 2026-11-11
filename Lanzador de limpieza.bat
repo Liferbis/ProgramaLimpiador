@@ -18,6 +18,7 @@ net session >nul 2>&1 || ( powershell -Command "Start-Process '%~f0' -Verb RunAs
 
 set "PS1=%~dp0Limpiador.ps1"
 if not exist "%PS1%" ( echo No encuentro Limpiador.ps1 en esta carpeta. & pause & exit /b )
+if not exist "%~dp0Elegir.ps1" ( echo No encuentro Elegir.ps1 en esta carpeta. & pause & exit /b )
 set "EXCLUIR=Windows|Microsoft Office|SQL Server|Common Files"
 
 :inicio
@@ -47,36 +48,18 @@ if !LEN! LSS 3 ( echo. & echo           !A!Pon al menos 3 letras, que con menos 
 
 set "LNOMBRE=!NOMBRE!"
 set "LEXCLUIR=!EXCLUIR!"
-set "LPROG="
+set "PS1LIM=%PS1%"
+set "SELOUT=%TEMP%\limsel.txt"
+del "%SELOUT%" 2>nul
 
 echo.
 echo           !G!Buscando «!NOMBRE!» (busqueda aproximada) …!R!
-set "i=0"
-for /f "usebackq delims=" %%L in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "& '%PS1%' -Nombre $env:LNOMBRE -Excluir $env:LEXCLUIR -Listar"`) do (
-  set /a i+=1
-  set "OPT[!i!]=%%L"
-)
-
-if !i! EQU 0 goto sinprograma
-if !i! EQU 1 ( set "LPROG=!OPT[1]!" & goto preparado )
-
-:elegir
-cls
-echo.
-echo           !C!Programas que se parecen a «!NOMBRE!»:!R!
-echo.
-for /l %%n in (1,1,!i!) do echo              %%n^)  !OPT[%%n]!
-echo              !V!T^)  Todas!R!
-echo.
-set /p "SEL=          Elige un numero o T  ›  "
-if /i "!SEL!"=="T" (
-  set "LPROG="
-  for /l %%n in (1,1,!i!) do ( if defined LPROG ( set "LPROG=!LPROG!^|!OPT[%%n]!" ) else ( set "LPROG=!OPT[%%n]!" ) )
-  goto preparado
-)
-set "CHO=!OPT[%SEL%]!"
-if not defined CHO goto elegir
-set "LPROG=!CHO!"
+powershell -NoProfile -ExecutionPolicy Bypass -STA -File "%~dp0Elegir.ps1"
+set "RC=!ERRORLEVEL!"
+if "!RC!"=="2" goto sinprograma
+if "!RC!"=="1" goto inicio
+set "LPROG="
+if exist "%SELOUT%" set /p LPROG=<"%SELOUT%"
 goto preparado
 
 :sinprograma
