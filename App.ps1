@@ -1,4 +1,4 @@
-# App.ps1 — Limpiador de PC (interfaz con pestañas) — portable, requiere Windows PowerShell 5.1+
+# App.ps1 — Limpiador de PC (interfaz con pestañas, modo oscuro) — portable, Windows PowerShell 5.1+
 # Pestañas: Limpiador · Recursos · Top 100 archivos pesados
 
 # --- Auto-elevacion a administrador ---
@@ -11,15 +11,17 @@ if (-not $pr.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administra
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
+# Barra de titulo oscura (Windows 10 2004+/11)
+try { Add-Type -Namespace Win -Name Dwm -MemberDefinition '[DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(System.IntPtr hwnd, int attr, int[] val, int size);' -ErrorAction SilentlyContinue } catch {}
 
 $PS1 = Join-Path $PSScriptRoot 'Limpiador.ps1'
 $EXCLUIR = 'Windows|Microsoft Office|SQL Server|Common Files'
 
-# Colores
-$BG   = [System.Drawing.Color]::FromArgb(28,28,30)
-$BG2  = [System.Drawing.Color]::FromArgb(40,40,44)
-$FG   = [System.Drawing.Color]::Gainsboro
-$ACC  = [System.Drawing.Color]::FromArgb(90,180,230)
+# Paleta oscura
+$script:BG  = [System.Drawing.Color]::FromArgb(24,24,27)
+$script:BG2 = [System.Drawing.Color]::FromArgb(40,40,46)
+$script:FG  = [System.Drawing.Color]::FromArgb(230,230,230)
+$script:ACC = [System.Drawing.Color]::FromArgb(90,170,230)
 $fuente = New-Object System.Drawing.Font('Segoe UI',10)
 
 function Format-Size([long]$b) {
@@ -29,7 +31,7 @@ function Format-Size([long]$b) {
   return "$b B"
 }
 
-# --- Infraestructura de trabajos en segundo plano (UI fluida) ---
+# --- Trabajos en segundo plano (UI fluida) ---
 $script:bg = New-Object System.Collections.ArrayList
 function Run-Bg($code, [object[]]$arguments, $onDone) {
   $rs = [runspacefactory]::CreateRunspace(); $rs.Open()
@@ -45,57 +47,88 @@ $form = New-Object System.Windows.Forms.Form
 $form.Text = 'Limpiador de PC'
 $form.Size = New-Object System.Drawing.Size(960, 640)
 $form.StartPosition = 'CenterScreen'
-$form.BackColor = $BG; $form.ForeColor = $FG; $form.Font = $fuente
+$form.BackColor = $script:BG; $form.ForeColor = $script:FG; $form.Font = $fuente
 $form.MinimumSize = New-Object System.Drawing.Size(820, 540)
 
 $tabs = New-Object System.Windows.Forms.TabControl
-$tabs.Dock = 'Fill'; $tabs.Padding = New-Object System.Drawing.Point(14, 6)
+$tabs.Dock = 'Fill'
+$tabs.SizeMode = 'Fixed'
+$tabs.ItemSize = New-Object System.Drawing.Size(140, 30)
+$tabs.DrawMode = 'OwnerDrawFixed'
+$tabs.BackColor = $script:BG; $tabs.ForeColor = $script:FG
+$tabs.Add_DrawItem({
+  param($sender, $e)
+  $sel = ($e.Index -eq $sender.SelectedIndex)
+  $back = if ($sel) { $script:BG2 } else { $script:BG }
+  $brB = New-Object System.Drawing.SolidBrush($back)
+  $e.Graphics.FillRectangle($brB, $e.Bounds)
+  if ($sel) {
+    $penA = New-Object System.Drawing.Pen($script:ACC, 2)
+    $e.Graphics.DrawLine($penA, $e.Bounds.Left, $e.Bounds.Bottom-1, $e.Bounds.Right, $e.Bounds.Bottom-1)
+    $penA.Dispose()
+  }
+  $brT = New-Object System.Drawing.SolidBrush($script:FG)
+  $sf = New-Object System.Drawing.StringFormat
+  $sf.Alignment = 'Center'; $sf.LineAlignment = 'Center'
+  $rf = New-Object System.Drawing.RectangleF($e.Bounds.X, $e.Bounds.Y, $e.Bounds.Width, $e.Bounds.Height)
+  $e.Graphics.DrawString($sender.TabPages[$e.Index].Text, $sender.Font, $brT, $rf, $sf)
+  $brB.Dispose(); $brT.Dispose(); $sf.Dispose()
+})
 $form.Controls.Add($tabs)
 
-# ---------- Helpers de estilo ----------
 function New-Tab($titulo) {
   $t = New-Object System.Windows.Forms.TabPage
-  $t.Text = $titulo; $t.BackColor = $BG; $t.ForeColor = $FG; $t.Padding = '12,12,12,12'
+  $t.Text = $titulo; $t.BackColor = $script:BG; $t.ForeColor = $script:FG
+  $t.UseVisualStyleBackColor = $false
+  $t.Padding = New-Object System.Windows.Forms.Padding(12)
   $tabs.TabPages.Add($t); return $t
 }
-function Style-Btn($b) { $b.FlatStyle='Flat'; $b.BackColor=$BG2; $b.ForeColor=$FG; $b.FlatAppearance.BorderColor=$ACC }
+function New-Lbl($txt, $x, $y) {
+  $l = New-Object System.Windows.Forms.Label
+  $l.Text = $txt; $l.AutoSize = $true; $l.ForeColor = $script:FG
+  $l.Location = New-Object System.Drawing.Point($x, $y)
+  return $l
+}
+function Style-Btn($b) {
+  $b.FlatStyle = 'Flat'; $b.BackColor = $script:BG2; $b.ForeColor = $script:FG
+  $b.FlatAppearance.BorderColor = $script:ACC
+}
 
 # =================== PESTAÑA 1: LIMPIADOR ===================
 $tabLimp = New-Tab 'Limpiador'
-
-$lblN = New-Object System.Windows.Forms.Label
-$lblN.Text = 'Programa a eliminar:'; $lblN.AutoSize = $true; $lblN.Location = '12,16'
-$tabLimp.Controls.Add($lblN)
+$tabLimp.Controls.Add((New-Lbl 'Programa a eliminar:' 12 16))
 
 $txtN = New-Object System.Windows.Forms.TextBox
-$txtN.Location = '150,13'; $txtN.Width = 320; $txtN.BackColor = $BG2; $txtN.ForeColor = $FG
+$txtN.Location = New-Object System.Drawing.Point(150,13); $txtN.Width = 320
+$txtN.BackColor = $script:BG2; $txtN.ForeColor = $script:FG; $txtN.BorderStyle = 'FixedSingle'
 $tabLimp.Controls.Add($txtN)
 
 $btnBuscar = New-Object System.Windows.Forms.Button
-$btnBuscar.Text = 'Buscar'; $btnBuscar.Location = '480,11'; $btnBuscar.Width = 100; Style-Btn $btnBuscar
+$btnBuscar.Text = 'Buscar'; $btnBuscar.Location = New-Object System.Drawing.Point(480,11); $btnBuscar.Width = 100; Style-Btn $btnBuscar
 $tabLimp.Controls.Add($btnBuscar)
 
 $lstM = New-Object System.Windows.Forms.ListBox
-$lstM.Location = '12,48'; $lstM.Size = New-Object System.Drawing.Size(568, 150)
-$lstM.BackColor = $BG2; $lstM.ForeColor = $FG; $lstM.BorderStyle = 'FixedSingle'
+$lstM.Location = New-Object System.Drawing.Point(12,48); $lstM.Size = New-Object System.Drawing.Size(568, 150)
+$lstM.BackColor = $script:BG2; $lstM.ForeColor = $script:FG; $lstM.BorderStyle = 'FixedSingle'
 $tabLimp.Controls.Add($lstM)
 
 $chkTodas = New-Object System.Windows.Forms.CheckBox
-$chkTodas.Text = 'Todas las coincidencias'; $chkTodas.AutoSize = $true; $chkTodas.Location = '12,205'
+$chkTodas.Text = 'Todas las coincidencias'; $chkTodas.AutoSize = $true
+$chkTodas.ForeColor = $script:FG; $chkTodas.Location = New-Object System.Drawing.Point(12,205)
 $tabLimp.Controls.Add($chkTodas)
 
 $btnSim = New-Object System.Windows.Forms.Button
-$btnSim.Text = 'Simular'; $btnSim.Location = '300,202'; $btnSim.Width = 130; Style-Btn $btnSim
+$btnSim.Text = 'Simular'; $btnSim.Location = New-Object System.Drawing.Point(300,202); $btnSim.Width = 130; Style-Btn $btnSim
 $tabLimp.Controls.Add($btnSim)
 $btnLimp = New-Object System.Windows.Forms.Button
-$btnLimp.Text = 'Desinstalar y limpiar'; $btnLimp.Location = '440,202'; $btnLimp.Width = 140; Style-Btn $btnLimp
+$btnLimp.Text = 'Desinstalar y limpiar'; $btnLimp.Location = New-Object System.Drawing.Point(440,202); $btnLimp.Width = 150; Style-Btn $btnLimp
 $tabLimp.Controls.Add($btnLimp)
 
 $outL = New-Object System.Windows.Forms.TextBox
-$outL.Location = '12,240'; $outL.Multiline = $true; $outL.ScrollBars = 'Vertical'; $outL.ReadOnly = $true
+$outL.Location = New-Object System.Drawing.Point(12,240); $outL.Multiline = $true; $outL.ScrollBars = 'Vertical'; $outL.ReadOnly = $true
 $outL.Size = New-Object System.Drawing.Size(915, 320)
-$outL.BackColor = [System.Drawing.Color]::Black; $outL.ForeColor = [System.Drawing.Color]::LightGreen
-$outL.Font = New-Object System.Drawing.Font('Consolas', 9)
+$outL.BackColor = [System.Drawing.Color]::FromArgb(16,16,18); $outL.ForeColor = [System.Drawing.Color]::FromArgb(130,230,150)
+$outL.Font = New-Object System.Drawing.Font('Consolas', 9); $outL.BorderStyle = 'FixedSingle'
 $outL.Anchor = 'Top,Bottom,Left,Right'
 $tabLimp.Controls.Add($outL)
 
@@ -121,7 +154,7 @@ function Invoke-Limpiador($ejecutar) {
   $prog = ''
   if ($chkTodas.Checked) { $prog = (@($lstM.Items) -join '|') }
   elseif ($lstM.SelectedItem) { $prog = "$($lstM.SelectedItem)" }
-  $outL.Text = if ($ejecutar) { 'Desinstalando y limpiando...' } else { 'Analizando...' }
+  if ($ejecutar) { $outL.Text = 'Desinstalando y limpiando...' } else { $outL.Text = 'Analizando...' }
   $btnSim.Enabled = $false; $btnLimp.Enabled = $false
   Run-Bg {
     param($ps1, $n, $ex, $prog, $ejec)
@@ -142,8 +175,8 @@ $btnLimp.Add_Click({
 # =================== PESTAÑA 2: RECURSOS ===================
 $tabRec = New-Tab 'Recursos'
 $lblRec = New-Object System.Windows.Forms.Label
-$lblRec.Location = '12,12'; $lblRec.AutoSize = $true
-$lblRec.Font = New-Object System.Drawing.Font('Consolas', 11)
+$lblRec.Location = New-Object System.Drawing.Point(16,16); $lblRec.AutoSize = $true; $lblRec.ForeColor = $script:FG
+$lblRec.Font = New-Object System.Drawing.Font('Consolas', 12)
 $lblRec.Text = 'Cargando...'
 $tabRec.Controls.Add($lblRec)
 
@@ -161,7 +194,7 @@ function Update-Recursos {
   [void]$sb.AppendLine("Discos:")
   foreach ($d in Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3') {
     $us = $d.Size - $d.FreeSpace
-    $pd = if ($d.Size) { [math]::Round(($us / $d.Size) * 100) } else { 0 }
+    if ($d.Size) { $pd = [math]::Round(($us / $d.Size) * 100) } else { $pd = 0 }
     [void]$sb.AppendLine(("  {0}  {1} / {2}  ({3}% usado, {4} libre)" -f $d.DeviceID, (Format-Size $us), (Format-Size $d.Size), $pd, (Format-Size $d.FreeSpace)))
   }
   $lblRec.Text = $sb.ToString()
@@ -173,16 +206,15 @@ $timRec.Add_Tick({ try { Update-Recursos } catch {} })
 # =================== PESTAÑA 3: TOP 100 PESADOS ===================
 $tabTop = New-Tab 'Top 100 pesados'
 $btnScan = New-Object System.Windows.Forms.Button
-$btnScan.Text = 'Escanear C:'; $btnScan.Location = '12,12'; $btnScan.Width = 130; Style-Btn $btnScan
+$btnScan.Text = 'Escanear C:'; $btnScan.Location = New-Object System.Drawing.Point(12,12); $btnScan.Width = 130; Style-Btn $btnScan
 $tabTop.Controls.Add($btnScan)
-$lblScan = New-Object System.Windows.Forms.Label
-$lblScan.Location = '155,18'; $lblScan.AutoSize = $true; $lblScan.Text = 'Pulsa Escanear (tarda; se ejecuta en segundo plano).'
+$lblScan = New-Lbl 'Pulsa Escanear (tarda; se ejecuta en segundo plano).' 155 18
 $tabTop.Controls.Add($lblScan)
 
 $lv = New-Object System.Windows.Forms.ListView
-$lv.Location = '12,48'; $lv.Size = New-Object System.Drawing.Size(915, 510)
+$lv.Location = New-Object System.Drawing.Point(12,48); $lv.Size = New-Object System.Drawing.Size(915, 505)
 $lv.View = 'Details'; $lv.FullRowSelect = $true; $lv.GridLines = $true
-$lv.BackColor = $BG2; $lv.ForeColor = $FG
+$lv.BackColor = $script:BG2; $lv.ForeColor = $script:FG
 $lv.Anchor = 'Top,Bottom,Left,Right'
 [void]$lv.Columns.Add('#', 40)
 [void]$lv.Columns.Add('Tamaño', 110)
@@ -191,7 +223,7 @@ $lv.Anchor = 'Top,Bottom,Left,Right'
 $tabTop.Controls.Add($lv)
 
 $btnAbrir = New-Object System.Windows.Forms.Button
-$btnAbrir.Text = 'Abrir carpeta'; $btnAbrir.Location = '12,565'; $btnAbrir.Width = 130; Style-Btn $btnAbrir
+$btnAbrir.Text = 'Abrir carpeta'; $btnAbrir.Location = New-Object System.Drawing.Point(12,560); $btnAbrir.Width = 130; Style-Btn $btnAbrir
 $btnAbrir.Anchor = 'Bottom,Left'
 $tabTop.Controls.Add($btnAbrir)
 $btnAbrir.Add_Click({
@@ -228,7 +260,7 @@ $btnScan.Add_Click({
   }
 })
 
-# =================== Timer global de trabajos en 2º plano ===================
+# =================== Timer global de 2º plano ===================
 $poll = New-Object System.Windows.Forms.Timer
 $poll.Interval = 300
 $poll.Add_Tick({
@@ -236,7 +268,6 @@ $poll.Add_Tick({
   $pend = @($script:bg.ToArray())
   foreach ($j in $pend) {
     if ($j.H.IsCompleted) {
-      $out = $null
       try { $out = $j.P.EndInvoke($j.H) } catch { $out = @("Error: $($_.Exception.Message)") }
       try { & $j.D $out } catch {}
       $j.P.Dispose(); $j.R.Close(); $j.R.Dispose()
@@ -246,8 +277,11 @@ $poll.Add_Tick({
 })
 $poll.Start()
 
-# Recursos: primera lectura + arranque del timer al mostrar
-$form.Add_Shown({ try { Update-Recursos } catch {}; $timRec.Start() })
+$form.Add_Shown({
+  try { $dark = @(1); [Win.Dwm]::DwmSetWindowAttribute($form.Handle, 20, $dark, 4) | Out-Null; [Win.Dwm]::DwmSetWindowAttribute($form.Handle, 19, $dark, 4) | Out-Null } catch {}
+  try { Update-Recursos } catch {}
+  $timRec.Start()
+})
 $form.Add_FormClosing({ $poll.Stop(); $timRec.Stop() })
 
 [void]$form.ShowDialog()
