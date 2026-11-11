@@ -35,14 +35,14 @@ function Format-Size([long]$b) {
 }
 
 # --- Trabajos en segundo plano (UI fluida) ---
-$script:bg = New-Object System.Collections.ArrayList
+$global:limpBg = New-Object System.Collections.ArrayList
 function Run-Bg($code, [object[]]$arguments, $onDone) {
   $rs = [runspacefactory]::CreateRunspace(); $rs.Open()
   $p = [powershell]::Create(); $p.Runspace = $rs
   [void]$p.AddScript($code)
   foreach ($a in $arguments) { [void]$p.AddArgument($a) }
   $h = $p.BeginInvoke()
-  [void]$script:bg.Add([pscustomobject]@{ P = $p; H = $h; R = $rs; D = $onDone })
+  [void]$global:limpBg.Add([pscustomobject]@{ P = $p; H = $h; R = $rs; D = $onDone })
 }
 
 # =================== FORM ===================
@@ -61,21 +61,27 @@ $tabs.DrawMode = 'OwnerDrawFixed'
 $tabs.BackColor = $script:BG; $tabs.ForeColor = $script:FG
 $tabs.Add_DrawItem({
   param($sender, $e)
-  $sel = ($e.Index -eq $sender.SelectedIndex)
-  $back = if ($sel) { $script:BG2 } else { $script:BG }
-  $brB = New-Object System.Drawing.SolidBrush($back)
-  $e.Graphics.FillRectangle($brB, $e.Bounds)
-  if ($sel) {
-    $penA = New-Object System.Drawing.Pen($script:ACC, 2)
-    $e.Graphics.DrawLine($penA, $e.Bounds.Left, $e.Bounds.Bottom-1, $e.Bounds.Right, $e.Bounds.Bottom-1)
-    $penA.Dispose()
-  }
-  $brT = New-Object System.Drawing.SolidBrush($script:FG)
-  $sf = New-Object System.Drawing.StringFormat
-  $sf.Alignment = 'Center'; $sf.LineAlignment = 'Center'
-  $rf = New-Object System.Drawing.RectangleF($e.Bounds.X, $e.Bounds.Y, $e.Bounds.Width, $e.Bounds.Height)
-  $e.Graphics.DrawString($sender.TabPages[$e.Index].Text, $sender.Font, $brT, $rf, $sf)
-  $brB.Dispose(); $brT.Dispose(); $sf.Dispose()
+  try {
+    $cBG  = [System.Drawing.Color]::FromArgb(24,24,27)
+    $cBG2 = [System.Drawing.Color]::FromArgb(40,40,46)
+    $cFG  = [System.Drawing.Color]::FromArgb(230,230,230)
+    $cACC = [System.Drawing.Color]::FromArgb(90,170,230)
+    $sel = ($e.Index -eq $sender.SelectedIndex)
+    if ($sel) { $back = $cBG2 } else { $back = $cBG }
+    $brB = New-Object System.Drawing.SolidBrush($back)
+    $e.Graphics.FillRectangle($brB, $e.Bounds)
+    if ($sel) {
+      $penA = New-Object System.Drawing.Pen($cACC, 2)
+      $e.Graphics.DrawLine($penA, $e.Bounds.Left, $e.Bounds.Bottom-1, $e.Bounds.Right, $e.Bounds.Bottom-1)
+      $penA.Dispose()
+    }
+    $brT = New-Object System.Drawing.SolidBrush($cFG)
+    $sf = New-Object System.Drawing.StringFormat
+    $sf.Alignment = 'Center'; $sf.LineAlignment = 'Center'
+    $rf = New-Object System.Drawing.RectangleF($e.Bounds.X, $e.Bounds.Y, $e.Bounds.Width, $e.Bounds.Height)
+    $e.Graphics.DrawString($sender.TabPages[$e.Index].Text, $sender.Font, $brT, $rf, $sf)
+    $brB.Dispose(); $brT.Dispose(); $sf.Dispose()
+  } catch {}
 })
 $form.Controls.Add($tabs)
 
@@ -267,14 +273,14 @@ $btnScan.Add_Click({
 $poll = New-Object System.Windows.Forms.Timer
 $poll.Interval = 300
 $poll.Add_Tick({
-  if ($script:bg.Count -eq 0) { return }
-  $pend = @($script:bg.ToArray())
+  if ($global:limpBg.Count -eq 0) { return }
+  $pend = @($global:limpBg.ToArray())
   foreach ($j in $pend) {
     if ($j.H.IsCompleted) {
       try { $out = $j.P.EndInvoke($j.H) } catch { $out = @("Error: $($_.Exception.Message)") }
       try { & $j.D $out } catch {}
       $j.P.Dispose(); $j.R.Close(); $j.R.Dispose()
-      [void]$script:bg.Remove($j)
+      [void]$global:limpBg.Remove($j)
     }
   }
 })
