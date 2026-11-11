@@ -52,7 +52,7 @@ set "LPROG="
 echo.
 echo           !G!Buscando «!NOMBRE!» (busqueda aproximada) …!R!
 set "i=0"
-for /f "usebackq delims=" %%L in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "& '%PS1%' -Nombre $env:LNOMBRE -Excluir $env:LEXCLUIR -Listar"`) do (
+for /f "usebackq delims=" %%L in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "& '%PS1%' -Nombre $env:LNOMBRE -Excluir $env:LEXCLUIR -Listar" 2^>nul`) do (
   set /a i+=1
   set "OPT[!i!]=%%L"
 )
