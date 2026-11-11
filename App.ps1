@@ -14,7 +14,10 @@ Add-Type -AssemblyName System.Drawing
 # Barra de titulo oscura (Windows 10 2004+/11)
 try { Add-Type -Namespace Win -Name Dwm -MemberDefinition '[DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(System.IntPtr hwnd, int attr, int[] val, int size);' -ErrorAction SilentlyContinue } catch {}
 
-$PS1 = Join-Path $PSScriptRoot 'Limpiador.ps1'
+$baseDir = $PSScriptRoot
+if (-not $baseDir) { if ($MyInvocation.MyCommand.Path) { $baseDir = Split-Path $MyInvocation.MyCommand.Path } }
+if (-not $baseDir) { try { $baseDir = Split-Path ([System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName) } catch {} }
+$PS1 = Join-Path $baseDir 'Limpiador.ps1'
 $EXCLUIR = 'Windows|Microsoft Office|SQL Server|Common Files'
 
 # Paleta oscura
