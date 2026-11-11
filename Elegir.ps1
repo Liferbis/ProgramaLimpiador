@@ -8,7 +8,7 @@ $ps1 = $env:PS1LIM
 $out = $env:SELOUT
 $cands = @()
 try {
-  $cands = @(powershell -NoProfile -ExecutionPolicy Bypass -File $ps1 -Nombre $env:LNOMBRE -Excluir $env:LEXCLUIR -Listar | ? { $_ -and $_.Trim() })
+  $cands = @(powershell -NoProfile -ExecutionPolicy Bypass -File $ps1 -Nombre $env:LNOMBRE -Excluir $env:LEXCLUIR -Listar 2>$null | ? { $_ -and $_.Trim() })
 } catch {}
 if ($cands.Count -eq 0) { exit 2 }
 

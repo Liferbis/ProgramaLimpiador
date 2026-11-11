@@ -17,7 +17,7 @@ $claves = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
           'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
           'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall'
 
-# --- Utilidades de coincidencia difusa ---
+# --- Utilidades de coincidencia difusa (compatibles con PowerShell 5.1) ---
 function Norm($s){ ($s -replace '[^\p{L}\p{N}]','').ToLower() }
 function Marca($name){
   $c = $name -replace '\(.*?\)',' '
@@ -26,38 +26,49 @@ function Marca($name){
   ($c -replace '\s+',' ').Trim()
 }
 function Lev($a,$b){
-  $n=$a.Length; $m=$b.Length
-  if($n -eq 0){return $m}; if($m -eq 0){return $n}
-  $d=New-Object 'int[,]' ($n+1),($m+1)
-  for($i=0;$i -le $n;$i++){$d[$i,0]=$i}
-  for($j=0;$j -le $m;$j++){$d[0,$j]=$j}
-  for($i=1;$i -le $n;$i++){ for($j=1;$j -le $m;$j++){
-    $c= if($a[$i-1] -eq $b[$j-1]){0}else{1}
-    $d[$i,$j]=[math]::Min([math]::Min($d[$i-1,$j]+1,$d[$i,$j-1]+1),$d[$i-1,$j-1]+$c)
-  }}
-  $d[$n,$m]
+  $n = $a.Length; $m = $b.Length
+  if ($n -eq 0) { return $m }
+  if ($m -eq 0) { return $n }
+  $prev = New-Object 'int[]' ($m + 1)
+  $cur  = New-Object 'int[]' ($m + 1)
+  for ($j = 0; $j -le $m; $j++) { $prev[$j] = $j }
+  for ($i = 1; $i -le $n; $i++) {
+    $cur[0] = $i
+    for ($j = 1; $j -le $m; $j++) {
+      $cost = 1; if ($a[$i-1] -eq $b[$j-1]) { $cost = 0 }
+      $del = $prev[$j] + 1
+      $ins = $cur[$j-1] + 1
+      $sub = $prev[$j-1] + $cost
+      $min = $del
+      if ($ins -lt $min) { $min = $ins }
+      if ($sub -lt $min) { $min = $sub }
+      $cur[$j] = $min
+    }
+    $tmp = $prev; $prev = $cur; $cur = $tmp
+  }
+  return $prev[$m]
 }
 $termN  = Norm $Nombre
-$umbral = [math]::Max(2,[int][math]::Floor($termN.Length*0.34))
+$umbral = [math]::Max(2, [int][math]::Floor($termN.Length * 0.34))
 function Puntua($name){
   $b = Marca $name
   $best = 999
-  foreach($p in @($b) + ($b -split '\s+')){
+  foreach ($p in @($b) + ($b -split '\s+')) {
     $pn = Norm $p
-    if($pn.Length -lt 2){ continue }
-    if($pn.Contains($termN) -or $termN.Contains($pn)){ return 0 }
+    if ($pn.Length -lt 2) { continue }
+    if ($pn.Contains($termN) -or $termN.Contains($pn)) { return 0 }
     $dd = Lev $termN $pn
-    if($dd -lt $best){ $best = $dd }
+    if ($dd -lt $best) { $best = $dd }
   }
   $best
 }
 
-# --- Modo LISTAR: programas instalados parecidos a $Nombre, ordenados por parecido ---
+# --- Modo LISTAR: programas instalados parecidos a $Nombre (lista corta y simple) ---
 if ($Listar) {
   Get-ChildItem $claves | ? { $_.GetValue('DisplayName') -and $_.GetValue('DisplayName') -notmatch $Excluir } |
     % { [pscustomobject]@{ N = $_.GetValue('DisplayName'); S = (Puntua $_.GetValue('DisplayName')) } } |
     ? { $_.S -le $umbral } | Sort-Object S, N | Group-Object N | % { $_.Group[0] } |
-    Select-Object -First 15 | % { $_.N }
+    Select-Object -First 9 | % { $_.N }
   exit 0
 }
 
@@ -65,7 +76,7 @@ if ($Listar) {
 if ($Programas) { $nombresSel = @($Programas -split '\|' | ? { $_ }) } else { $nombresSel = @() }
 if ($nombresSel) { $sel = @(Get-ChildItem $claves | ? { $nombresSel -contains $_.GetValue('DisplayName') }) } else { $sel = @() }
 
-# --- Tokens para residuos: a partir de los programas elegidos, o del termino tecleado ---
+# --- Tokens para residuos ---
 $fuentes = if ($nombresSel) { $nombresSel } else { @($Nombre) }
 $tok = [System.Collections.Generic.List[string]]::new()
 foreach ($f in $fuentes) { $b = Marca $f; if ($b) { $tok.Add($b) }; $fw = ($b -split '\s+')[0]; if ($fw) { $tok.Add($fw) } }
@@ -127,7 +138,7 @@ Get-ChildItem 'HKCU:\Software','HKLM:\SOFTWARE','HKLM:\SOFTWARE\WOW6432Node',
   'HKCU:\Software\Classes','HKLM:\SOFTWARE\Classes' -Recurse -Depth 2 |
   ? PSChildName -match $pat | Select -Expand PSPath | % { Add-Obj ($_ -replace '^.*::') }
 
-# --- 4. Desinstaladores huerfanos que coincidan con el patron ---
+# --- 4. Desinstaladores huerfanos que coincidan ---
 Get-ChildItem $claves | ? { $_.GetValue('DisplayName') -match $pat } |
   Select -Expand PSPath | % { Add-Obj ($_ -replace '^.*::') }
 
