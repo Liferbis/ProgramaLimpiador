@@ -38,7 +38,7 @@ echo           !G!!EXCLUIR!!R!
 echo.
 echo.
 set /p "NOMBRE=          !C!Programa a eliminar!R!  !G!(Enter = salir)!R!  ›  "
-if "!NOMBRE!"=="" exit /b
+if "!NOMBRE!"=="" exit
 
 set "TMP=!NOMBRE!" & set "LEN=0"
 :lenloop
@@ -67,8 +67,10 @@ echo           !C!Programas que se parecen a «!NOMBRE!»:!R!
 echo.
 for /l %%n in (1,1,!i!) do echo              %%n^)  !OPT[%%n]!
 echo              !V!T^)  Todas!R!
+echo              !A!S^)  Salir!R!
 echo.
-set /p "SEL=          Elige un numero o T  ›  "
+set /p "SEL=          Elige un numero, T o S  ›  "
+if /i "!SEL!"=="S" exit
 if /i "!SEL!"=="T" (
   set "LPROG="
   for /l %%n in (1,1,!i!) do ( if defined LPROG ( set "LPROG=!LPROG!^|!OPT[%%n]!" ) else ( set "LPROG=!OPT[%%n]!" ) )
