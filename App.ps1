@@ -1,7 +1,6 @@
-﻿﻿# App.ps1 — Limpiador de PC (interfaz con pestañas, modo oscuro) — portable, Windows PowerShell 5.1+
+﻿# App.ps1 — Limpiador de PC (interfaz con pestañas, modo oscuro) — portable, Windows PowerShell 5.1+
 # Pestañas: Limpiador · Recursos · Top 100 archivos pesados
 
-# --- Auto-elevacion a administrador ---
 $pr = New-Object System.Security.Principal.WindowsPrincipal([System.Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $pr.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) {
   if ($PSCommandPath) { Start-Process powershell "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$PSCommandPath`"" -Verb RunAs }
@@ -12,6 +11,18 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 try { Add-Type -Namespace Win -Name Dwm -MemberDefinition '[DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(System.IntPtr hwnd, int attr, int[] val, int size);' -ErrorAction SilentlyContinue } catch {}
+try {
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class TVApi {
+  [StructLayout(LayoutKind.Sequential)]
+  public struct TVITEM { public int mask; public IntPtr hItem; public int state; public int stateMask; public IntPtr pszText; public int cchTextMax; public int iImage; public int iSelectedImage; public int cChildren; public IntPtr lParam; }
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)]
+  public static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, ref TVITEM lParam);
+}
+"@
+} catch {}
 
 $baseDir = $PSScriptRoot
 if (-not $baseDir) { if ($MyInvocation.MyCommand.Path) { $baseDir = Split-Path $MyInvocation.MyCommand.Path } }
@@ -31,7 +42,6 @@ function Format-Size([long]$b) {
   if ($b -ge 1KB) { return ('{0:N0} KB' -f ($b/1KB)) }
   return "$b B"
 }
-
 function Describe-File($name, $path) {
   $n = "$name".ToLower(); $p = "$path".ToLower()
   switch -Regex ($n) {
@@ -60,7 +70,6 @@ function Describe-File($name, $path) {
   if ($p -match 'node_modules')  { return 'Dependencias de desarrollo' }
   return ''
 }
-
 function Get-Categoria($dn) {
   $t = "$dn".ToLower()
   if ($t -match 'microsoft|office|onedrive|teams|visual c\+\+|\.net| sql |odbc|ole db|edge|copilot|windows') { return 'Microsoft' }
@@ -71,8 +80,8 @@ function Get-Categoria($dn) {
   if ($t -match '7-zip|winrar|notepad|vlc|adobe|acrobat|reader|snagit|zoom|skype|spotify|office') { return 'Aplicaciones' }
   return 'Otros'
 }
+function Es-Cache($p) { return ("$p" -match '(?i)(\\|/)(cache|caches|gpucache|code ?cache|codecache|crashpad|temp|tmp|logs?|dumps?|webcache|inetcache)(\\|/|$)') }
 
-# --- Trabajos en segundo plano ---
 $global:limpBg = New-Object System.Collections.ArrayList
 function Run-Bg($code, [object[]]$arguments, $onDone) {
   $rs = [runspacefactory]::CreateRunspace(); $rs.Open()
@@ -86,7 +95,7 @@ function Run-Bg($code, [object[]]$arguments, $onDone) {
 # =================== FORM ===================
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'Limpiador de PC'
-$form.Size = New-Object System.Drawing.Size(980, 680)
+$form.Size = New-Object System.Drawing.Size(980, 700)
 $form.StartPosition = 'CenterScreen'
 $form.BackColor = $BG; $form.ForeColor = $FG; $form.Font = $fuente
 $form.MinimumSize = New-Object System.Drawing.Size(860, 560)
@@ -94,8 +103,7 @@ $form.MinimumSize = New-Object System.Drawing.Size(860, 560)
 $tabs = New-Object System.Windows.Forms.TabControl
 $tabs.Dock = 'Fill'; $tabs.SizeMode = 'Fixed'
 $tabs.ItemSize = New-Object System.Drawing.Size(150, 30)
-$tabs.DrawMode = 'OwnerDrawFixed'
-$tabs.BackColor = $BG; $tabs.ForeColor = $FG
+$tabs.DrawMode = 'OwnerDrawFixed'; $tabs.BackColor = $BG; $tabs.ForeColor = $FG
 $tabs.Add_DrawItem({
   param($sender, $e)
   try {
@@ -106,8 +114,8 @@ $tabs.Add_DrawItem({
     $brB = New-Object System.Drawing.SolidBrush($back); $e.Graphics.FillRectangle($brB, $e.Bounds)
     if ($sel) { $penA = New-Object System.Drawing.Pen($cACC, 2); $e.Graphics.DrawLine($penA, $e.Bounds.Left, $e.Bounds.Bottom-1, $e.Bounds.Right, $e.Bounds.Bottom-1); $penA.Dispose() }
     $brT = New-Object System.Drawing.SolidBrush($cFG)
-    $sf = New-Object System.Drawing.StringFormat; $sf.Alignment = 'Center'; $sf.LineAlignment = 'Center'
-    $rf = New-Object System.Drawing.RectangleF($e.Bounds.X, $e.Bounds.Y, $e.Bounds.Width, $e.Bounds.Height)
+    $sf = New-Object System.Drawing.StringFormat; $sf.Alignment='Center'; $sf.LineAlignment='Center'
+    $rf = New-Object System.Drawing.RectangleF($e.Bounds.X,$e.Bounds.Y,$e.Bounds.Width,$e.Bounds.Height)
     $e.Graphics.DrawString($sender.TabPages[$e.Index].Text, $sender.Font, $brT, $rf, $sf)
     $brB.Dispose(); $brT.Dispose(); $sf.Dispose()
   } catch {}
@@ -117,7 +125,7 @@ $form.Controls.Add($tabs)
 function New-Tab($titulo) {
   $t = New-Object System.Windows.Forms.TabPage
   $t.Text = $titulo; $t.BackColor = $BG; $t.ForeColor = $FG; $t.UseVisualStyleBackColor = $false
-  $t.Padding = New-Object System.Windows.Forms.Padding(12)
+  $t.Padding = New-Object System.Windows.Forms.Padding(10)
   $tabs.TabPages.Add($t); return $t
 }
 function New-Lbl($txt, $x, $y) {
@@ -125,50 +133,72 @@ function New-Lbl($txt, $x, $y) {
   $l.Text = $txt; $l.AutoSize = $true; $l.ForeColor = $FG
   $l.Location = New-Object System.Drawing.Point($x, $y); return $l
 }
-function Style-Btn($b) { $b.FlatStyle = 'Flat'; $b.BackColor = $BG2; $b.ForeColor = $FG; $b.FlatAppearance.BorderColor = $ACC }
+function Style-Btn($b) { $b.FlatStyle='Flat'; $b.BackColor=$BG2; $b.ForeColor=$FG; $b.FlatAppearance.BorderColor=$ACC }
+function New-TLP($rows) {
+  $t = New-Object System.Windows.Forms.TableLayoutPanel
+  $t.Dock='Fill'; $t.ColumnCount=1; $t.RowCount=$rows.Count; $t.BackColor=$BG; $t.Margin=New-Object System.Windows.Forms.Padding(0)
+  [void]$t.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent,100)))
+  foreach ($r in $rows) {
+    if ($r -eq 'fill') { [void]$t.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Percent,100))) }
+    else { [void]$t.RowStyles.Add((New-Object System.Windows.Forms.RowStyle([System.Windows.Forms.SizeType]::Absolute,[int]$r))) }
+  }
+  return $t
+}
 
 # =================== PESTAÑA 1: LIMPIADOR ===================
 $tabLimp = New-Tab 'Limpiador'
-$tabLimp.Controls.Add((New-Lbl 'Programa a eliminar:' 12 16))
+$tlpL = New-TLP @(40,'fill',46,120)
+$tabLimp.Controls.Add($tlpL)
 
+# fila 0: buscador
+$pSearch = New-Object System.Windows.Forms.Panel; $pSearch.Dock='Fill'; $pSearch.BackColor=$BG
+$pSearch.Controls.Add((New-Lbl 'Programa a eliminar:' 0 10))
 $txtN = New-Object System.Windows.Forms.TextBox
-$txtN.Location = New-Object System.Drawing.Point(160,13); $txtN.Width = 330
-$txtN.BackColor = $BG2; $txtN.ForeColor = $FG; $txtN.BorderStyle = 'FixedSingle'
-$tabLimp.Controls.Add($txtN)
+$txtN.Location = New-Object System.Drawing.Point(150,7); $txtN.Width = 320
+$txtN.BackColor=$BG2; $txtN.ForeColor=$FG; $txtN.BorderStyle='FixedSingle'
+$pSearch.Controls.Add($txtN)
 $btnBuscar = New-Object System.Windows.Forms.Button
-$btnBuscar.Text = 'Buscar'; $btnBuscar.Location = New-Object System.Drawing.Point(500,11); $btnBuscar.Width = 100; Style-Btn $btnBuscar
-$tabLimp.Controls.Add($btnBuscar)
+$btnBuscar.Text='Buscar'; $btnBuscar.Location=New-Object System.Drawing.Point(480,5); $btnBuscar.Width=100; Style-Btn $btnBuscar
+$pSearch.Controls.Add($btnBuscar)
 $btnTodos = New-Object System.Windows.Forms.Button
-$btnTodos.Text = 'Ver todos'; $btnTodos.Location = New-Object System.Drawing.Point(610,11); $btnTodos.Width = 100; Style-Btn $btnTodos
-$tabLimp.Controls.Add($btnTodos)
+$btnTodos.Text='Ver todos'; $btnTodos.Location=New-Object System.Drawing.Point(590,5); $btnTodos.Width=100; Style-Btn $btnTodos
+$pSearch.Controls.Add($btnTodos)
+$tlpL.Controls.Add($pSearch,0,0)
 
+# fila 1: arbol
 $tree = New-Object System.Windows.Forms.TreeView
-$tree.Location = New-Object System.Drawing.Point(12,48); $tree.Size = New-Object System.Drawing.Size(935, 380)
-$tree.BackColor = $BG2; $tree.ForeColor = $FG; $tree.BorderStyle = 'FixedSingle'
-$tree.HideSelection = $false; $tree.CheckBoxes = $true; $tree.Anchor = 'Top,Bottom,Left'
-$tabLimp.Controls.Add($tree)
-$tree.Add_AfterCheck({
-  param($s, $e)
-  try { if ("$($e.Action)" -ne 'Unknown' -and $e.Node.Nodes.Count -gt 0) { foreach ($c in $e.Node.Nodes) { $c.Checked = $e.Node.Checked } } } catch {}
-})
+$tree.Dock='Fill'; $tree.Margin=New-Object System.Windows.Forms.Padding(0,4,0,4)
+$tree.BackColor=$BG2; $tree.ForeColor=$FG; $tree.BorderStyle='FixedSingle'
+$tree.CheckBoxes=$true; $tree.HideSelection=$false
+$tlpL.Controls.Add($tree,0,1)
 
+# fila 2: botones de accion
+$pBtns = New-Object System.Windows.Forms.Panel; $pBtns.Dock='Fill'; $pBtns.BackColor=$BG
 $btnDes = New-Object System.Windows.Forms.Button
-$btnDes.Text = 'Desinstalar (y limpiar residuos)'; $btnDes.Location = New-Object System.Drawing.Point(12,434); $btnDes.Width = 240; Style-Btn $btnDes; $btnDes.Anchor='Bottom,Left'
-$tabLimp.Controls.Add($btnDes)
+$btnDes.Text='Desinstalar (y limpiar residuos)'; $btnDes.Location=New-Object System.Drawing.Point(0,7); $btnDes.Width=240; Style-Btn $btnDes
+$pBtns.Controls.Add($btnDes)
 $btnCarp = New-Object System.Windows.Forms.Button
-$btnCarp.Text = 'Listar carpetas'; $btnCarp.Location = New-Object System.Drawing.Point(262,434); $btnCarp.Width = 150; Style-Btn $btnCarp; $btnCarp.Anchor='Bottom,Left'
-$tabLimp.Controls.Add($btnCarp)
+$btnCarp.Text='Listar carpetas'; $btnCarp.Location=New-Object System.Drawing.Point(250,7); $btnCarp.Width=150; Style-Btn $btnCarp
+$pBtns.Controls.Add($btnCarp)
 $btnCache = New-Object System.Windows.Forms.Button
-$btnCache.Text = 'Limpiar cache'; $btnCache.Location = New-Object System.Drawing.Point(422,434); $btnCache.Width = 150; Style-Btn $btnCache; $btnCache.Anchor='Bottom,Left'
-$tabLimp.Controls.Add($btnCache)
+$btnCache.Text='Limpiar cache'; $btnCache.Location=New-Object System.Drawing.Point(410,7); $btnCache.Width=150; Style-Btn $btnCache
+$pBtns.Controls.Add($btnCache)
+$tlpL.Controls.Add($pBtns,0,2)
 
+# fila 3: salida
 $outL = New-Object System.Windows.Forms.TextBox
-$outL.Location = New-Object System.Drawing.Point(12,470); $outL.Multiline = $true; $outL.ScrollBars = 'Vertical'; $outL.ReadOnly = $true
-$outL.Size = New-Object System.Drawing.Size(935, 115)
-$outL.BackColor = [System.Drawing.Color]::FromArgb(16,16,18); $outL.ForeColor = [System.Drawing.Color]::FromArgb(130,230,150)
-$outL.Font = New-Object System.Drawing.Font('Consolas', 9); $outL.BorderStyle = 'FixedSingle'; $outL.Anchor = 'Bottom,Left'
-$tabLimp.Controls.Add($outL)
+$outL.Dock='Fill'; $outL.Multiline=$true; $outL.ScrollBars='Vertical'; $outL.ReadOnly=$true
+$outL.BackColor=[System.Drawing.Color]::FromArgb(16,16,18); $outL.ForeColor=[System.Drawing.Color]::FromArgb(130,230,150)
+$outL.Font=New-Object System.Drawing.Font('Consolas',9); $outL.BorderStyle='FixedSingle'
+$tlpL.Controls.Add($outL,0,3)
 
+function Hide-Check($node) {
+  try {
+    $tvi = New-Object TVApi+TVITEM
+    $tvi.hItem = $node.Handle; $tvi.mask = 0x18; $tvi.stateMask = 0xF000; $tvi.state = 0
+    [TVApi]::SendMessage($tree.Handle, 0x113F, [IntPtr]::Zero, [ref]$tvi) | Out-Null
+  } catch {}
+}
 function Llenar-Arbol($nombres, $busqueda) {
   $tree.BeginUpdate(); $tree.Nodes.Clear()
   if ($busqueda) {
@@ -188,19 +218,16 @@ function Llenar-Arbol($nombres, $busqueda) {
     }
   }
   $tree.EndUpdate()
+  foreach ($cat in $tree.Nodes) { Hide-Check $cat }
 }
-function Prog-Seleccionado {
-  $n = $tree.SelectedNode
-  if ($n -and $n.Parent -and $n.Nodes.Count -eq 0) { return $n.Text }
-  return ''
-}
-function Todas-Hojas {
+function Prog-Marcados {
   $out = New-Object System.Collections.ArrayList
-  foreach ($cat in $tree.Nodes) { foreach ($leaf in $cat.Nodes) { [void]$out.Add($leaf.Text) } }
+  foreach ($cat in $tree.Nodes) { foreach ($leaf in $cat.Nodes) { if ($leaf.Checked) { [void]$out.Add($leaf.Text) } } }
   return $out
 }
+function Habilitar-Acc($on) { $btnDes.Enabled=$on; $btnCarp.Enabled=$on; $btnCache.Enabled=$on }
 function Cargar-Todos {
-  $outL.Text = 'Cargando la lista de programas instalados...'; $tree.Nodes.Clear(); $global:esBusqueda = $false
+  $outL.Text = 'Cargando la lista de programas instalados...'; $tree.Nodes.Clear()
   Run-Bg {
     $claves = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
               'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
@@ -213,53 +240,45 @@ function Cargar-Todos {
     param($res)
     $items = @($res | Where-Object { $_ -and "$_".Trim() })
     Llenar-Arbol $items $false
-    $outL.Text = "$($items.Count) programas instalados, agrupados por categoria. Despliega una categoria y elige, o busca por nombre."
+    $outL.Text = "$($items.Count) programas instalados. Despliega una categoria, marca uno o varios y usa los botones."
   }
 }
 $btnTodos.Add_Click({ Cargar-Todos })
 $btnBuscar.Add_Click({
   $n = $txtN.Text.Trim()
   if ($n.Length -lt 3) { Cargar-Todos; return }
-  $tree.Nodes.Clear(); $outL.Text = 'Buscando...'; $btnBuscar.Enabled = $false; $global:esBusqueda = $true
+  $tree.Nodes.Clear(); $outL.Text='Buscando...'; $btnBuscar.Enabled=$false
   Run-Bg {
     param($ps1, $n, $ex)
     & powershell -NoProfile -ExecutionPolicy Bypass -File $ps1 -Nombre $n -Excluir $ex -Listar 2>$null
   } @($PS1, $n, $EXCLUIR) {
     param($res)
-    $btnBuscar.Enabled = $true
+    $btnBuscar.Enabled=$true
     $items = @($res | Where-Object { $_ -and "$_".Trim() })
-    if ($items.Count -eq 0) { $tree.Nodes.Clear(); $outL.Text = "Nada instalado se parece. Se podran limpiar residuos sueltos al pulsar Simular." }
-    else { Llenar-Arbol $items $true; $outL.Text = "$($items.Count) coincidencia(s). Elige una o marca 'Todas'." }
+    if ($items.Count -eq 0) { $tree.Nodes.Clear(); $outL.Text="Nada instalado se parece. Se podran limpiar residuos sueltos al desinstalar." }
+    else { Llenar-Arbol $items $true; $outL.Text="$($items.Count) coincidencia(s). Marca las que quieras." }
   }
 })
 
-function Prog-Marcados {
-  $out = New-Object System.Collections.ArrayList
-  foreach ($cat in $tree.Nodes) { foreach ($leaf in $cat.Nodes) { if ($leaf.Checked) { [void]$out.Add($leaf.Text) } } }
-  return $out
-}
-function Es-Cache($p) { return ("$p" -match '(?i)(\\|/)(cache|caches|gpucache|code ?cache|codecache|crashpad|temp|tmp|logs?|dumps?|webcache|inetcache)(\\|/|$)') }
-function Habilitar-Acc($on) { $btnDes.Enabled = $on; $btnCarp.Enabled = $on; $btnCache.Enabled = $on }
-
+# Comando: cada boton pasa -Programas "p1|p2|..." (1 o varios); el motor los separa por |
 $btnDes.Add_Click({
   $marc = Prog-Marcados
-  if ($marc.Count -eq 0) { $outL.Text = 'Marca al menos un programa (casilla del arbol).'; return }
+  if ($marc.Count -eq 0) { $outL.Text='Marca al menos un programa (casilla).'; return }
   $r = [System.Windows.Forms.MessageBox]::Show("Vas a DESINSTALAR y limpiar residuos de $($marc.Count) programa(s). Es permanente. Continuar?", 'Confirmar', 'YesNo', 'Warning')
   if ($r -ne 'Yes') { return }
   $prog = (@($marc) -join '|'); $n = "$($marc[0])"
-  $outL.Text = 'Desinstalando y limpiando...'; Habilitar-Acc $false
+  $outL.Text='Desinstalando y limpiando...'; Habilitar-Acc $false
   Run-Bg {
     param($ps1, $n, $ex, $prog)
     & powershell -NoProfile -ExecutionPolicy Bypass -File $ps1 -Nombre $n -Excluir $ex -Programas $prog -Ejecutar 2>&1
   } @($PS1, $n, $EXCLUIR, $prog) {
-    param($res); Habilitar-Acc $true; $outL.Text = (@($res) -join "`r`n")
+    param($res); Habilitar-Acc $true; $outL.Text=(@($res) -join "`r`n")
   }
 })
-
 $btnCarp.Add_Click({
   $marc = Prog-Marcados
-  if ($marc.Count -eq 0) { $outL.Text = 'Marca al menos un programa.'; return }
-  $prog = (@($marc) -join '|'); $n = "$($marc[0])"; $outL.Text = 'Buscando carpetas...'; Habilitar-Acc $false
+  if ($marc.Count -eq 0) { $outL.Text='Marca al menos un programa.'; return }
+  $prog = (@($marc) -join '|'); $n = "$($marc[0])"; $outL.Text='Buscando carpetas...'; Habilitar-Acc $false
   Run-Bg {
     param($ps1, $n, $ex, $prog)
     & powershell -NoProfile -ExecutionPolicy Bypass -File $ps1 -Nombre $n -Excluir $ex -Programas $prog -SoloRutas 2>$null
@@ -278,11 +297,10 @@ $btnCarp.Add_Click({
     $outL.Text = $sb.ToString()
   }
 })
-
 $btnCache.Add_Click({
   $marc = Prog-Marcados
-  if ($marc.Count -eq 0) { $outL.Text = 'Marca al menos un programa.'; return }
-  $prog = (@($marc) -join '|'); $n = "$($marc[0])"; $outL.Text = 'Localizando cache...'; Habilitar-Acc $false
+  if ($marc.Count -eq 0) { $outL.Text='Marca al menos un programa.'; return }
+  $prog = (@($marc) -join '|'); $n = "$($marc[0])"; $outL.Text='Localizando cache...'; Habilitar-Acc $false
   Run-Bg {
     param($ps1, $n, $ex, $prog)
     & powershell -NoProfile -ExecutionPolicy Bypass -File $ps1 -Nombre $n -Excluir $ex -Programas $prog -SoloRutas 2>$null
@@ -291,15 +309,15 @@ $btnCache.Add_Click({
     Habilitar-Acc $true
     $paths = @($res | Where-Object { $_ -and "$_".Trim() })
     $cache = @($paths | Where-Object { Es-Cache $_ })
-    if ($cache.Count -eq 0) { $outL.Text = 'No se han encontrado carpetas de cache para lo marcado.'; return }
+    if ($cache.Count -eq 0) { $outL.Text='No se han encontrado carpetas de cache para lo marcado.'; return }
     $r = [System.Windows.Forms.MessageBox]::Show("Se borraran $($cache.Count) elementos de cache. El programa NO se desinstala. Continuar?", 'Limpiar cache', 'YesNo', 'Warning')
-    if ($r -ne 'Yes') { $outL.Text = 'Cancelado.'; return }
-    $outL.Text = 'Borrando cache...'; Habilitar-Acc $false
+    if ($r -ne 'Yes') { $outL.Text='Cancelado.'; return }
+    $outL.Text='Borrando cache...'; Habilitar-Acc $false
     Run-Bg {
       param($lst)
       $lst | ForEach-Object { $ruta = $_; try { Remove-Item -LiteralPath $ruta -Recurse -Force -ErrorAction Stop; "OK  $ruta" } catch { "NO  $ruta" } }
     } (,$cache) {
-      param($r2); Habilitar-Acc $true; $outL.Text = ("Limpieza de cache:`r`n" + (@($r2) -join "`r`n"))
+      param($r2); Habilitar-Acc $true; $outL.Text=("Limpieza de cache:`r`n" + (@($r2) -join "`r`n"))
     }
   }
 })
@@ -307,21 +325,16 @@ $btnCache.Add_Click({
 # =================== PESTAÑA 2: RECURSOS ===================
 $tabRec = New-Tab 'Recursos'
 $txtRec = New-Object System.Windows.Forms.TextBox
-$txtRec.Multiline = $true; $txtRec.ReadOnly = $true; $txtRec.ScrollBars = 'Vertical'
-$txtRec.Dock = 'Fill'; $txtRec.BorderStyle = 'None'
-$txtRec.BackColor = $BG; $txtRec.ForeColor = $FG
-$txtRec.Font = New-Object System.Drawing.Font('Consolas', 11); $txtRec.Text = 'Cargando...'
+$txtRec.Multiline=$true; $txtRec.ReadOnly=$true; $txtRec.ScrollBars='Vertical'; $txtRec.Dock='Fill'; $txtRec.BorderStyle='None'
+$txtRec.BackColor=$BG; $txtRec.ForeColor=$FG; $txtRec.Font=New-Object System.Drawing.Font('Consolas',11); $txtRec.Text='Cargando...'
 $tabRec.Controls.Add($txtRec)
-
 function Get-Estatico {
-  $cs   = Get-CimInstance Win32_ComputerSystem
-  $os   = Get-CimInstance Win32_OperatingSystem
-  $bios = Get-CimInstance Win32_BIOS
-  $cpu  = Get-CimInstance Win32_Processor | Select-Object -First 1
-  $gpu  = Get-CimInstance Win32_VideoController | Where-Object { $_.Name } | Select-Object -First 1
-  $arr  = Get-CimInstance Win32_PhysicalMemoryArray | Select-Object -First 1
-  $mods = @(Get-CimInstance Win32_PhysicalMemory)
-  $sb = New-Object System.Text.StringBuilder
+  $cs=Get-CimInstance Win32_ComputerSystem; $os=Get-CimInstance Win32_OperatingSystem; $bios=Get-CimInstance Win32_BIOS
+  $cpu=Get-CimInstance Win32_Processor | Select-Object -First 1
+  $gpu=Get-CimInstance Win32_VideoController | Where-Object { $_.Name } | Select-Object -First 1
+  $arr=Get-CimInstance Win32_PhysicalMemoryArray | Select-Object -First 1
+  $mods=@(Get-CimInstance Win32_PhysicalMemory)
+  $sb=New-Object System.Text.StringBuilder
   [void]$sb.AppendLine("Equipo:    $($cs.Name)")
   if ($cs.PartOfDomain) { [void]$sb.AppendLine("Dominio:   $($cs.Domain)") } else { [void]$sb.AppendLine("Grupo:     $($cs.Workgroup)  (no en dominio)") }
   [void]$sb.AppendLine("Usuario:   $($cs.UserName)")
@@ -334,73 +347,68 @@ function Get-Estatico {
   [void]$sb.AppendLine("           $($cpu.NumberOfCores) nucleos / $($cpu.NumberOfLogicalProcessors) hilos  -  $([math]::Round($cpu.MaxClockSpeed/1000,2)) GHz")
   if ($gpu) { [void]$sb.AppendLine("GPU:       $($gpu.Name)") }
   [void]$sb.AppendLine("")
-  if ($arr) { $slots = $arr.MemoryDevices } else { $slots = $mods.Count }
+  if ($arr) { $slots=$arr.MemoryDevices } else { $slots=$mods.Count }
   [void]$sb.AppendLine("RAM:       $($mods.Count) de $slots slots ocupados")
   foreach ($m in $mods) {
-    switch ([int]$m.SMBIOSMemoryType) {
-      20 { $tipo='DDR' } 21 { $tipo='DDR2' } 24 { $tipo='DDR3' } 26 { $tipo='DDR4' } 34 { $tipo='DDR5' } default { $tipo="tipo $($m.SMBIOSMemoryType)" }
-    }
-    if ($m.ConfiguredClockSpeed) { $sp = $m.ConfiguredClockSpeed } else { $sp = $m.Speed }
-    [void]$sb.AppendLine(("  [{0}]  {1}  {2}  {3} MHz  {4}" -f $m.DeviceLocator, (Format-Size ([long]$m.Capacity)), $tipo, $sp, "$($m.Manufacturer)".Trim()))
+    switch ([int]$m.SMBIOSMemoryType) { 20{$tipo='DDR'} 21{$tipo='DDR2'} 24{$tipo='DDR3'} 26{$tipo='DDR4'} 34{$tipo='DDR5'} default{$tipo="tipo $($m.SMBIOSMemoryType)"} }
+    if ($m.ConfiguredClockSpeed) { $sp=$m.ConfiguredClockSpeed } else { $sp=$m.Speed }
+    [void]$sb.AppendLine(("  [{0}]  {1}  {2}  {3} MHz  {4}" -f $m.DeviceLocator,(Format-Size ([long]$m.Capacity)),$tipo,$sp,"$($m.Manufacturer)".Trim()))
   }
   [void]$sb.AppendLine("")
   [void]$sb.AppendLine("Discos fisicos:")
   foreach ($dd in Get-CimInstance Win32_DiskDrive) {
-    if ("$($dd.InterfaceType)" -eq 'USB' -or "$($dd.MediaType)" -match 'removable|external') { $ubic = 'EXTRAIBLE/USB' } else { $ubic = 'INTERNO' }
-    [void]$sb.AppendLine(("  [{0}]  {1}  ({2}, {3})" -f $ubic, "$($dd.Model)".Trim(), (Format-Size ([long]$dd.Size)), $dd.InterfaceType))
+    if ("$($dd.InterfaceType)" -eq 'USB' -or "$($dd.MediaType)" -match 'removable|external') { $ubic='EXTRAIBLE/USB' } else { $ubic='INTERNO' }
+    [void]$sb.AppendLine(("  [{0}]  {1}  ({2}, {3})" -f $ubic,"$($dd.Model)".Trim(),(Format-Size ([long]$dd.Size)),$dd.InterfaceType))
   }
   return $sb.ToString()
 }
 function Update-Recursos {
-  if (-not $global:recEstatico) { try { $global:recEstatico = Get-Estatico } catch { $global:recEstatico = '' } }
-  $os  = Get-CimInstance Win32_OperatingSystem
-  $cpu = (Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
-  $ramTot = $os.TotalVisibleMemorySize * 1KB
-  $ramUso = $ramTot - ($os.FreePhysicalMemory * 1KB)
-  if ($ramTot) { $pRam = [math]::Round(($ramUso / $ramTot) * 100) } else { $pRam = 0 }
-  $up = (Get-Date) - $os.LastBootUpTime
-  $sb = New-Object System.Text.StringBuilder
+  if (-not $global:recEstatico) { try { $global:recEstatico = Get-Estatico } catch { $global:recEstatico='' } }
+  $os=Get-CimInstance Win32_OperatingSystem
+  $cpu=(Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
+  $ramTot=$os.TotalVisibleMemorySize*1KB; $ramUso=$ramTot-($os.FreePhysicalMemory*1KB)
+  if ($ramTot) { $pRam=[math]::Round(($ramUso/$ramTot)*100) } else { $pRam=0 }
+  $up=(Get-Date)-$os.LastBootUpTime
+  $sb=New-Object System.Text.StringBuilder
   [void]$sb.AppendLine($global:recEstatico)
   [void]$sb.AppendLine("------------------------------------------------------------")
   [void]$sb.AppendLine("Uso en vivo:")
   [void]$sb.AppendLine("  CPU:   $([int]$cpu) %")
   [void]$sb.AppendLine("  RAM:   $(Format-Size $ramUso) / $(Format-Size $ramTot)  ($pRam %)")
-  [void]$sb.AppendLine(("  Encendido hace:  {0}h {1}m" -f [int]$up.TotalHours, $up.Minutes))
+  [void]$sb.AppendLine(("  Encendido hace:  {0}h {1}m" -f [int]$up.TotalHours,$up.Minutes))
   [void]$sb.AppendLine("")
   [void]$sb.AppendLine("Unidades:")
   foreach ($d in Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=2 OR DriveType=3') {
-    if ($d.DriveType -eq 2) { $et = 'EXTRAIBLE/USB' } else { $et = 'INTERNO    ' }
-    $us = $d.Size - $d.FreeSpace
-    if ($d.Size) { $pd = [math]::Round(($us / $d.Size) * 100) } else { $pd = 0 }
-    [void]$sb.AppendLine(("  {0}  {1}  {2} / {3}  ({4}% usado, {5} libre)" -f $et, $d.DeviceID, (Format-Size $us), (Format-Size $d.Size), $pd, (Format-Size $d.FreeSpace)))
+    if ($d.DriveType -eq 2) { $et='EXTRAIBLE/USB' } else { $et='INTERNO    ' }
+    $us=$d.Size-$d.FreeSpace; if ($d.Size) { $pd=[math]::Round(($us/$d.Size)*100) } else { $pd=0 }
+    [void]$sb.AppendLine(("  {0}  {1}  {2} / {3}  ({4}% usado, {5} libre)" -f $et,$d.DeviceID,(Format-Size $us),(Format-Size $d.Size),$pd,(Format-Size $d.FreeSpace)))
   }
-  $txtRec.Text = $sb.ToString()
+  $txtRec.Text=$sb.ToString()
 }
-$timRec = New-Object System.Windows.Forms.Timer
-$timRec.Interval = 2000
+$timRec = New-Object System.Windows.Forms.Timer; $timRec.Interval=2000
 $timRec.Add_Tick({ try { Update-Recursos } catch {} })
 
 # =================== PESTAÑA 3: TOP 100 PESADOS ===================
 $tabTop = New-Tab 'Top 100 pesados'
+$tlpT = New-TLP @(40,'fill',44)
+$tabTop.Controls.Add($tlpT)
+$pTH = New-Object System.Windows.Forms.Panel; $pTH.Dock='Fill'; $pTH.BackColor=$BG
 $btnScan = New-Object System.Windows.Forms.Button
-$btnScan.Text = 'Escanear C:'; $btnScan.Location = New-Object System.Drawing.Point(12,12); $btnScan.Width = 130; Style-Btn $btnScan
-$tabTop.Controls.Add($btnScan)
-$lblScan = New-Lbl 'Pulsa Escanear. Omite Windows y archivos de sistema para ir rapido.' 155 18
-$tabTop.Controls.Add($lblScan)
-
+$btnScan.Text='Escanear C:'; $btnScan.Location=New-Object System.Drawing.Point(0,6); $btnScan.Width=130; Style-Btn $btnScan
+$pTH.Controls.Add($btnScan)
+$lblScan = New-Lbl 'Pulsa Escanear. Omite Windows y sistema para ir rapido.' 140 12
+$pTH.Controls.Add($lblScan)
+$tlpT.Controls.Add($pTH,0,0)
 $lv = New-Object System.Windows.Forms.ListView
-$lv.Location = New-Object System.Drawing.Point(12,48); $lv.Size = New-Object System.Drawing.Size(945, 525)
-$lv.View = 'Details'; $lv.FullRowSelect = $true; $lv.GridLines = $true
-$lv.BackColor = $BG2; $lv.ForeColor = $FG; $lv.Anchor = 'Top,Bottom,Left'
-[void]$lv.Columns.Add('#', 36)
-[void]$lv.Columns.Add('Tamaño', 90)
-[void]$lv.Columns.Add('Descripción', 185)
-[void]$lv.Columns.Add('Archivo', 235)
-[void]$lv.Columns.Add('Ruta', 360)
-$tabTop.Controls.Add($lv)
+$lv.Dock='Fill'; $lv.Margin=New-Object System.Windows.Forms.Padding(0,4,0,4)
+$lv.View='Details'; $lv.FullRowSelect=$true; $lv.GridLines=$true; $lv.BackColor=$BG2; $lv.ForeColor=$FG
+[void]$lv.Columns.Add('#',36); [void]$lv.Columns.Add('Tamaño',90); [void]$lv.Columns.Add('Descripción',185); [void]$lv.Columns.Add('Archivo',235); [void]$lv.Columns.Add('Ruta',360)
+$tlpT.Controls.Add($lv,0,1)
+$pTF = New-Object System.Windows.Forms.Panel; $pTF.Dock='Fill'; $pTF.BackColor=$BG
 $btnAbrir = New-Object System.Windows.Forms.Button
-$btnAbrir.Text = 'Abrir carpeta'; $btnAbrir.Location = New-Object System.Drawing.Point(12,580); $btnAbrir.Width = 130; Style-Btn $btnAbrir; $btnAbrir.Anchor = 'Bottom,Left'
-$tabTop.Controls.Add($btnAbrir)
+$btnAbrir.Text='Abrir carpeta'; $btnAbrir.Location=New-Object System.Drawing.Point(0,7); $btnAbrir.Width=130; Style-Btn $btnAbrir
+$pTF.Controls.Add($btnAbrir)
+$tlpT.Controls.Add($pTF,0,2)
 $btnAbrir.Add_Click({
   if ($lv.SelectedItems.Count -gt 0) {
     $ruta = $lv.SelectedItems[0].SubItems[4].Text
@@ -408,29 +416,26 @@ $btnAbrir.Add_Click({
   }
 })
 $btnScan.Add_Click({
-  $btnScan.Enabled = $false; $lblScan.Text = 'Escaneando C:... (en segundo plano, no se cuelga)'; $lv.Items.Clear()
+  $btnScan.Enabled=$false; $lblScan.Text='Escaneando C:... (en segundo plano, no se cuelga)'; $lv.Items.Clear()
   Run-Bg {
-    $skip = '(?i)\\(Windows|WinSxS|\$Recycle\.Bin|System Volume Information|Config\.Msi)(\\|$)'
-    $top = New-Object System.Collections.Generic.List[System.Object]
-    $thr = [long]0
-    $stack = New-Object System.Collections.Stack
-    $stack.Push('C:\')
+    $skip='(?i)\\(Windows|WinSxS|\$Recycle\.Bin|System Volume Information|Config\.Msi)(\\|$)'
+    $top=New-Object System.Collections.Generic.List[System.Object]; $thr=[long]0
+    $stack=New-Object System.Collections.Stack; $stack.Push('C:\')
     while ($stack.Count -gt 0) {
-      $dir = $stack.Pop()
+      $dir=$stack.Pop()
       if ("$dir" -match $skip) { continue }
       try {
-        $di = New-Object System.IO.DirectoryInfo $dir
+        $di=New-Object System.IO.DirectoryInfo $dir
         if ($di.Attributes -band [System.IO.FileAttributes]::ReparsePoint) { continue }
         foreach ($sd in $di.GetDirectories()) { $stack.Push($sd.FullName) }
         foreach ($fi in $di.GetFiles()) {
-          $len = $fi.Length
+          $len=$fi.Length
           if ($top.Count -lt 100 -or $len -gt $thr) {
-            $top.Add((New-Object psobject -Property @{ FullName = $fi.FullName; Length = $len }))
+            $top.Add((New-Object psobject -Property @{ FullName=$fi.FullName; Length=$len }))
             if ($top.Count -ge 220) {
-              $keep = $top | Sort-Object Length -Descending | Select-Object -First 100
-              $top = New-Object System.Collections.Generic.List[System.Object]
-              foreach ($k in $keep) { $top.Add($k) }
-              $thr = $top[$top.Count-1].Length
+              $keep=$top | Sort-Object Length -Descending | Select-Object -First 100
+              $top=New-Object System.Collections.Generic.List[System.Object]; foreach ($k in $keep) { $top.Add($k) }
+              $thr=$top[$top.Count-1].Length
             }
           }
         }
@@ -439,51 +444,39 @@ $btnScan.Add_Click({
     $top | Sort-Object Length -Descending | Select-Object -First 100
   } @() {
     param($res)
-    $btnScan.Enabled = $true
-    $arr = @($res)
-    $lv.BeginUpdate(); $lv.Items.Clear()
-    $i = 0
+    $btnScan.Enabled=$true; $arr=@($res)
+    $lv.BeginUpdate(); $lv.Items.Clear(); $i=0
     foreach ($f in $arr) {
-      $i++
-      $nom = [System.IO.Path]::GetFileName($f.FullName)
-      $it = New-Object System.Windows.Forms.ListViewItem([string]$i)
+      $i++; $nom=[System.IO.Path]::GetFileName($f.FullName)
+      $it=New-Object System.Windows.Forms.ListViewItem([string]$i)
       [void]$it.SubItems.Add((Format-Size ([long]$f.Length)))
       [void]$it.SubItems.Add((Describe-File $nom $f.FullName))
       [void]$it.SubItems.Add($nom)
       [void]$it.SubItems.Add($f.FullName)
       [void]$lv.Items.Add($it)
     }
-    $lv.EndUpdate()
-    $lblScan.Text = "Listo: $($arr.Count) archivos mas pesados de C: (sin Windows ni sistema)."
+    $lv.EndUpdate(); $lblScan.Text="Listo: $($arr.Count) archivos mas pesados de C: (sin Windows ni sistema)."
   }
 })
 
-# =================== Timer global de 2º plano ===================
-$poll = New-Object System.Windows.Forms.Timer
-$poll.Interval = 300
+# =================== Timer global ===================
+$poll = New-Object System.Windows.Forms.Timer; $poll.Interval=300
 $poll.Add_Tick({
   if ($global:limpBg.Count -eq 0) { return }
-  $pend = @($global:limpBg.ToArray())
+  $pend=@($global:limpBg.ToArray())
   foreach ($j in $pend) {
     if ($j.H.IsCompleted) {
-      try { $out = $j.P.EndInvoke($j.H) } catch { $out = @("Error: $($_.Exception.Message)") }
+      try { $out=$j.P.EndInvoke($j.H) } catch { $out=@("Error: $($_.Exception.Message)") }
       try { & $j.D $out } catch {}
-      $j.P.Dispose(); $j.R.Close(); $j.R.Dispose()
-      [void]$global:limpBg.Remove($j)
+      $j.P.Dispose(); $j.R.Close(); $j.R.Dispose(); [void]$global:limpBg.Remove($j)
     }
   }
 })
 $poll.Start()
-
-function Ajustar-Anchos {
-  try { $w = $tabLimp.ClientSize.Width; if ($w -gt 60) { $tree.Width = $w - 24; $outL.Width = $w - 24 } } catch {}
-  try { $wt = $tabTop.ClientSize.Width; if ($wt -gt 60) { $lv.Width = $wt - 24 } } catch {}
-}
-$form.Add_Resize({ try { Ajustar-Anchos } catch {} })
 $form.Add_Shown({
-  try { $dark = @(1); [Win.Dwm]::DwmSetWindowAttribute($form.Handle, 20, $dark, 4) | Out-Null; [Win.Dwm]::DwmSetWindowAttribute($form.Handle, 19, $dark, 4) | Out-Null } catch {}
+  try { $dark=@(1); [Win.Dwm]::DwmSetWindowAttribute($form.Handle,20,$dark,4)|Out-Null; [Win.Dwm]::DwmSetWindowAttribute($form.Handle,19,$dark,4)|Out-Null } catch {}
   try { Update-Recursos } catch {}
-  $timRec.Start(); Cargar-Todos; try { Ajustar-Anchos } catch {}
+  $timRec.Start(); Cargar-Todos
 })
 $form.Add_FormClosing({ $poll.Stop(); $timRec.Stop() })
 [void]$form.ShowDialog()
