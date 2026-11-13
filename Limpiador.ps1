@@ -5,6 +5,7 @@ param(
   [string]$Excluir = 'Windows|Microsoft Office|SQL Server|Common Files',
   [string]$Programas = '',                    # DisplayName(s) exactos elegidos, separados por | (uno o varios)
   [switch]$Listar,                            # Solo lista programas instalados que se PARECEN a $Nombre y sale
+  [switch]$SoloRutas,                         # Solo imprime las rutas de residuos (una por linea), sin desinstalar ni avisos
   [switch]$Regex,                             # Tratar $Nombre como regex (uso avanzado)
   [switch]$Profundo,                          # Extra: tambien dentro de Windows y mas hondo (lento)
   [switch]$Ejecutar                           # Sin esto = simulacion
@@ -92,6 +93,7 @@ $hondo = 4
 if ($Profundo) { $skip = '\\(\$Recycle\.Bin|System Volume Information)\\'; $hondo = 12 }
 
 # --- 0. Desinstalacion oficial (solo los programas elegidos) ---
+if (-not $SoloRutas) {
 "`n=== Desinstaladores registrados ==="
 foreach ($d in $sel) {
   $nom = $d.GetValue('DisplayName')
@@ -105,12 +107,15 @@ foreach ($d in $sel) {
   else { "Desinstalaria: $nom  ->  $cmd" }
 }
 if (-not $sel) { "(ninguno instalado coincide; se limpian solo residuos)" }
+}
 
 # --- 1. Procesos: solo los del propio programa (nunca sistema ni Claude) ---
 $procProtegidos = 'claude|cowork|chrome-native-host|explorer|svchost|csrss|wininit|winlogon|services|lsass|dwm|System|Idle|conhost|powershell|cmd'
+if (-not $SoloRutas) {
 Get-Process | ? { $_.Name -match $pat -and $_.Name -notmatch $procProtegidos -and $_.Path -notmatch '\\Windows\\' } | % {
   "Proceso: $($_.ProcessName)"
   if ($Ejecutar) { Stop-Process -Id $_.Id -Force }
+}
 }
 
 # --- 2. Archivos: rutas habituales (hondo) + resto de C: (podado) ---
@@ -143,12 +148,15 @@ Get-ChildItem $claves | ? { $_.GetValue('DisplayName') -match $pat } |
   Select -Expand PSPath | % { Add-Obj ($_ -replace '^.*::') }
 
 # --- 5. Servicios, tareas y arranque (solo aviso) ---
+if (-not $SoloRutas) {
 Get-CimInstance Win32_Service | ? { $_.Name -match $pat } | % { "Servicio (revisar a mano): $($_.Name)" }
 Get-ScheduledTask | ? { $_.TaskName -match $pat } | % { "Tarea (revisar a mano): $($_.TaskPath)$($_.TaskName)" }
 Get-CimInstance Win32_StartupCommand | ? { $_.Caption -match $pat } | % { "Inicio: $($_.Name)" }
+}
 
 # --- Resultado ---
 $lista = $objetivos | Sort -Unique
+if ($SoloRutas) { $lista | ? { $_ -match '^[A-Za-z]:\\' }; exit 0 }
 "`n=== $($lista.Count) residuos para '$Nombre' (excluyendo: $Excluir) ==="
 $lista
 

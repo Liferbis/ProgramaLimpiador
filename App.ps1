@@ -1,4 +1,4 @@
-﻿# App.ps1 — Limpiador de PC (interfaz con pestañas, modo oscuro) — portable, Windows PowerShell 5.1+
+﻿﻿# App.ps1 — Limpiador de PC (interfaz con pestañas, modo oscuro) — portable, Windows PowerShell 5.1+
 # Pestañas: Limpiador · Recursos · Top 100 archivos pesados
 
 # --- Auto-elevacion a administrador ---
@@ -145,25 +145,28 @@ $tabLimp.Controls.Add($btnTodos)
 $tree = New-Object System.Windows.Forms.TreeView
 $tree.Location = New-Object System.Drawing.Point(12,48); $tree.Size = New-Object System.Drawing.Size(935, 380)
 $tree.BackColor = $BG2; $tree.ForeColor = $FG; $tree.BorderStyle = 'FixedSingle'
-$tree.HideSelection = $false; $tree.Anchor = 'Top,Bottom,Left,Right'
+$tree.HideSelection = $false; $tree.CheckBoxes = $true; $tree.Anchor = 'Top,Bottom,Left'
 $tabLimp.Controls.Add($tree)
+$tree.Add_AfterCheck({
+  param($s, $e)
+  try { if ("$($e.Action)" -ne 'Unknown' -and $e.Node.Nodes.Count -gt 0) { foreach ($c in $e.Node.Nodes) { $c.Checked = $e.Node.Checked } } } catch {}
+})
 
-$chkTodas = New-Object System.Windows.Forms.CheckBox
-$chkTodas.Text = 'Todas las coincidencias de la busqueda'; $chkTodas.AutoSize = $true
-$chkTodas.ForeColor = $FG; $chkTodas.Location = New-Object System.Drawing.Point(12,438); $chkTodas.Anchor = 'Bottom,Left'
-$tabLimp.Controls.Add($chkTodas)
-$btnSim = New-Object System.Windows.Forms.Button
-$btnSim.Text = 'Simular'; $btnSim.Location = New-Object System.Drawing.Point(560,434); $btnSim.Width = 120; Style-Btn $btnSim; $btnSim.Anchor='Bottom,Right'
-$tabLimp.Controls.Add($btnSim)
-$btnLimp = New-Object System.Windows.Forms.Button
-$btnLimp.Text = 'Desinstalar y limpiar'; $btnLimp.Location = New-Object System.Drawing.Point(690,434); $btnLimp.Width = 160; Style-Btn $btnLimp; $btnLimp.Anchor='Bottom,Right'
-$tabLimp.Controls.Add($btnLimp)
+$btnDes = New-Object System.Windows.Forms.Button
+$btnDes.Text = 'Desinstalar (y limpiar residuos)'; $btnDes.Location = New-Object System.Drawing.Point(12,434); $btnDes.Width = 240; Style-Btn $btnDes; $btnDes.Anchor='Bottom,Left'
+$tabLimp.Controls.Add($btnDes)
+$btnCarp = New-Object System.Windows.Forms.Button
+$btnCarp.Text = 'Listar carpetas'; $btnCarp.Location = New-Object System.Drawing.Point(262,434); $btnCarp.Width = 150; Style-Btn $btnCarp; $btnCarp.Anchor='Bottom,Left'
+$tabLimp.Controls.Add($btnCarp)
+$btnCache = New-Object System.Windows.Forms.Button
+$btnCache.Text = 'Limpiar cache'; $btnCache.Location = New-Object System.Drawing.Point(422,434); $btnCache.Width = 150; Style-Btn $btnCache; $btnCache.Anchor='Bottom,Left'
+$tabLimp.Controls.Add($btnCache)
 
 $outL = New-Object System.Windows.Forms.TextBox
 $outL.Location = New-Object System.Drawing.Point(12,470); $outL.Multiline = $true; $outL.ScrollBars = 'Vertical'; $outL.ReadOnly = $true
 $outL.Size = New-Object System.Drawing.Size(935, 115)
 $outL.BackColor = [System.Drawing.Color]::FromArgb(16,16,18); $outL.ForeColor = [System.Drawing.Color]::FromArgb(130,230,150)
-$outL.Font = New-Object System.Drawing.Font('Consolas', 9); $outL.BorderStyle = 'FixedSingle'; $outL.Anchor = 'Bottom,Left,Right'
+$outL.Font = New-Object System.Drawing.Font('Consolas', 9); $outL.BorderStyle = 'FixedSingle'; $outL.Anchor = 'Bottom,Left'
 $tabLimp.Controls.Add($outL)
 
 function Llenar-Arbol($nombres, $busqueda) {
@@ -230,34 +233,75 @@ $btnBuscar.Add_Click({
   }
 })
 
-function Invoke-Limpiador($ejecutar) {
-  $prog = ''
-  if ($chkTodas.Checked) {
-    if (-not $global:esBusqueda) { $outL.Text = "'Todas' solo vale tras una busqueda. Selecciona un programa del arbol."; return }
-    $prog = ((Todas-Hojas) -join '|')
-  } else {
-    $sel = Prog-Seleccionado
-    if ($sel) { $prog = $sel }
-  }
-  $n = $txtN.Text.Trim()
-  if ($n.Length -lt 3 -and $prog) { $n = (($prog -split '\|')[0]) }
-  if ($n.Length -lt 3) { $outL.Text = 'Escribe un nombre (3+ letras) o selecciona un programa del arbol.'; return }
-  if ($ejecutar) { $outL.Text = 'Desinstalando y limpiando...' } else { $outL.Text = 'Analizando...' }
-  $btnSim.Enabled = $false; $btnLimp.Enabled = $false
-  Run-Bg {
-    param($ps1, $n, $ex, $prog, $ejec)
-    if ($ejec) { & powershell -NoProfile -ExecutionPolicy Bypass -File $ps1 -Nombre $n -Excluir $ex -Programas $prog -Ejecutar 2>&1 }
-    else { & powershell -NoProfile -ExecutionPolicy Bypass -File $ps1 -Nombre $n -Excluir $ex -Programas $prog 2>&1 }
-  } @($PS1, $n, $EXCLUIR, $prog, [bool]$ejecutar) {
-    param($res)
-    $btnSim.Enabled = $true; $btnLimp.Enabled = $true
-    $outL.Text = (@($res) -join "`r`n")
-  }
+function Prog-Marcados {
+  $out = New-Object System.Collections.ArrayList
+  foreach ($cat in $tree.Nodes) { foreach ($leaf in $cat.Nodes) { if ($leaf.Checked) { [void]$out.Add($leaf.Text) } } }
+  return $out
 }
-$btnSim.Add_Click({ Invoke-Limpiador $false })
-$btnLimp.Add_Click({
-  $r = [System.Windows.Forms.MessageBox]::Show('Esto desinstala y BORRA residuos de forma permanente. Continuar?', 'Confirmar', 'YesNo', 'Warning')
-  if ($r -eq 'Yes') { Invoke-Limpiador $true }
+function Es-Cache($p) { return ("$p" -match '(?i)(\\|/)(cache|caches|gpucache|code ?cache|codecache|crashpad|temp|tmp|logs?|dumps?|webcache|inetcache)(\\|/|$)') }
+function Habilitar-Acc($on) { $btnDes.Enabled = $on; $btnCarp.Enabled = $on; $btnCache.Enabled = $on }
+
+$btnDes.Add_Click({
+  $marc = Prog-Marcados
+  if ($marc.Count -eq 0) { $outL.Text = 'Marca al menos un programa (casilla del arbol).'; return }
+  $r = [System.Windows.Forms.MessageBox]::Show("Vas a DESINSTALAR y limpiar residuos de $($marc.Count) programa(s). Es permanente. Continuar?", 'Confirmar', 'YesNo', 'Warning')
+  if ($r -ne 'Yes') { return }
+  $prog = (@($marc) -join '|'); $n = "$($marc[0])"
+  $outL.Text = 'Desinstalando y limpiando...'; Habilitar-Acc $false
+  Run-Bg {
+    param($ps1, $n, $ex, $prog)
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $ps1 -Nombre $n -Excluir $ex -Programas $prog -Ejecutar 2>&1
+  } @($PS1, $n, $EXCLUIR, $prog) {
+    param($res); Habilitar-Acc $true; $outL.Text = (@($res) -join "`r`n")
+  }
+})
+
+$btnCarp.Add_Click({
+  $marc = Prog-Marcados
+  if ($marc.Count -eq 0) { $outL.Text = 'Marca al menos un programa.'; return }
+  $prog = (@($marc) -join '|'); $n = "$($marc[0])"; $outL.Text = 'Buscando carpetas...'; Habilitar-Acc $false
+  Run-Bg {
+    param($ps1, $n, $ex, $prog)
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $ps1 -Nombre $n -Excluir $ex -Programas $prog -SoloRutas 2>$null
+  } @($PS1, $n, $EXCLUIR, $prog) {
+    param($res)
+    Habilitar-Acc $true
+    $paths = @($res | Where-Object { $_ -and "$_".Trim() })
+    $cache = @($paths | Where-Object { Es-Cache $_ })
+    $datos = @($paths | Where-Object { -not (Es-Cache $_) })
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.AppendLine("== Datos / instalacion ($($datos.Count)) ==")
+    foreach ($d in $datos) { [void]$sb.AppendLine("  $d") }
+    [void]$sb.AppendLine("")
+    [void]$sb.AppendLine("== Cache / temporales ($($cache.Count)) ==")
+    foreach ($c in $cache) { [void]$sb.AppendLine("  $c") }
+    $outL.Text = $sb.ToString()
+  }
+})
+
+$btnCache.Add_Click({
+  $marc = Prog-Marcados
+  if ($marc.Count -eq 0) { $outL.Text = 'Marca al menos un programa.'; return }
+  $prog = (@($marc) -join '|'); $n = "$($marc[0])"; $outL.Text = 'Localizando cache...'; Habilitar-Acc $false
+  Run-Bg {
+    param($ps1, $n, $ex, $prog)
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $ps1 -Nombre $n -Excluir $ex -Programas $prog -SoloRutas 2>$null
+  } @($PS1, $n, $EXCLUIR, $prog) {
+    param($res)
+    Habilitar-Acc $true
+    $paths = @($res | Where-Object { $_ -and "$_".Trim() })
+    $cache = @($paths | Where-Object { Es-Cache $_ })
+    if ($cache.Count -eq 0) { $outL.Text = 'No se han encontrado carpetas de cache para lo marcado.'; return }
+    $r = [System.Windows.Forms.MessageBox]::Show("Se borraran $($cache.Count) elementos de cache. El programa NO se desinstala. Continuar?", 'Limpiar cache', 'YesNo', 'Warning')
+    if ($r -ne 'Yes') { $outL.Text = 'Cancelado.'; return }
+    $outL.Text = 'Borrando cache...'; Habilitar-Acc $false
+    Run-Bg {
+      param($lst)
+      $lst | ForEach-Object { $ruta = $_; try { Remove-Item -LiteralPath $ruta -Recurse -Force -ErrorAction Stop; "OK  $ruta" } catch { "NO  $ruta" } }
+    } (,$cache) {
+      param($r2); Habilitar-Acc $true; $outL.Text = ("Limpieza de cache:`r`n" + (@($r2) -join "`r`n"))
+    }
+  }
 })
 
 # =================== PESTAÑA 2: RECURSOS ===================
@@ -347,7 +391,7 @@ $tabTop.Controls.Add($lblScan)
 $lv = New-Object System.Windows.Forms.ListView
 $lv.Location = New-Object System.Drawing.Point(12,48); $lv.Size = New-Object System.Drawing.Size(945, 525)
 $lv.View = 'Details'; $lv.FullRowSelect = $true; $lv.GridLines = $true
-$lv.BackColor = $BG2; $lv.ForeColor = $FG; $lv.Anchor = 'Top,Bottom,Left,Right'
+$lv.BackColor = $BG2; $lv.ForeColor = $FG; $lv.Anchor = 'Top,Bottom,Left'
 [void]$lv.Columns.Add('#', 36)
 [void]$lv.Columns.Add('Tamaño', 90)
 [void]$lv.Columns.Add('Descripción', 185)
@@ -431,10 +475,15 @@ $poll.Add_Tick({
 })
 $poll.Start()
 
+function Ajustar-Anchos {
+  try { $w = $tabLimp.ClientSize.Width; if ($w -gt 60) { $tree.Width = $w - 24; $outL.Width = $w - 24 } } catch {}
+  try { $wt = $tabTop.ClientSize.Width; if ($wt -gt 60) { $lv.Width = $wt - 24 } } catch {}
+}
+$form.Add_Resize({ try { Ajustar-Anchos } catch {} })
 $form.Add_Shown({
   try { $dark = @(1); [Win.Dwm]::DwmSetWindowAttribute($form.Handle, 20, $dark, 4) | Out-Null; [Win.Dwm]::DwmSetWindowAttribute($form.Handle, 19, $dark, 4) | Out-Null } catch {}
   try { Update-Recursos } catch {}
-  $timRec.Start(); Cargar-Todos
+  $timRec.Start(); Cargar-Todos; try { Ajustar-Anchos } catch {}
 })
 $form.Add_FormClosing({ $poll.Stop(); $timRec.Stop() })
 [void]$form.ShowDialog()
